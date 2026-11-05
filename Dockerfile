@@ -92,12 +92,21 @@ RUN sed -i \
 RUN sed -i 's/^root:x:/root:*:/' /etc/passwd \
     && sed -i '/^root:/d' /etc/shadow
 
+# Condition 3b: a dedicated non-root 'victim' account, set up the same NSS/directory
+# way as root above — '*' in /etc/passwd with NO /etc/shadow entry, so the '*' is a
+# STABLE value that survives pick_salt()'s getspnam() call to the final strcmp().
+# This models the realistic affected shape the advisory calls out (nslcd/sssd/winbind
+# accounts) without needing root's PermitRootLogin path.
+RUN adduser -D -s /bin/sh victim \
+    && sed -i 's/^victim:[^:]*:/victim:*:/' /etc/passwd \
+    && sed -i '/^victim:/d' /etc/shadow
+
 # Condition 4: at least one other account with a real $6$ (or $5$) crypt hash
 RUN adduser -D -s /bin/sh otheruser \
     && echo 'otheruser:some-real-password' | chpasswd
 
-# Allow SSH login for root (the target) plus the salt-provider account
-RUN echo 'AllowUsers root otheruser' >> /etc/ssh/sshd_config
+# Allow SSH login for root and the 'victim' target, plus the salt-provider account
+RUN echo 'AllowUsers root victim otheruser' >> /etc/ssh/sshd_config
 
 EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D", "-e"]
